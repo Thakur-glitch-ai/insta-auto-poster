@@ -3,6 +3,7 @@ import time
 import os
 import random
 import json
+import base64
 from io import BytesIO
 from PIL import Image, ImageDraw, ImageFont
 
@@ -13,11 +14,12 @@ ACCESS_TOKEN = os.environ.get("IG_TOKEN")
 IG_USER_ID = os.environ.get("IG_USER_ID")
 PIXABAY_API_KEY = os.environ.get("PIXABAY_KEY")
 GEMINI_API_KEY = os.environ.get("GEMINI_KEY")
+IMGBB_API_KEY = os.environ.get("IMGBB_KEY") # New ImgBB Key
 
 def get_tips_from_gemini():
     print("1. Asking Gemini for 5 random ATS Resume tips...")
-    # Gemini 2.5 Flash model use kar rahe hain jo abhi available hai
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}"
+    # Updated to gemini-3.8-flash as requested by the API error
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key={GEMINI_API_KEY}"
     
     prompt = "Give me exactly 5 short, actionable ATS resume tips for freshers. Each tip should be a single sentence, maximum 12 words. Do not include numbers, bullet points, or intro/outro text. Separate each tip with a new line."
     
@@ -41,7 +43,7 @@ def get_tips_from_gemini():
         tips = tips[:5]
         
         if len(tips) < 3:
-            print("Gemini gave less tips, using fallback.")
+            print("⚠️ Gemini returned insufficient tips, using fallback.")
             return get_fallback_tips()
             
         print(f"✅ Gemini Tips: {tips}")
@@ -120,19 +122,24 @@ def fetch_and_create_image():
     return image_path, tips
 
 def upload_image_to_host(image_path):
-    print("3. Uploading image to temporary host (Catbox)...")
-    # 0x0.st band hai, isliye wapas Catbox.moe use kar rahe hain
-    url = "https://catbox.moe/user/api.php"
-    with open(image_path, 'rb') as f:
-        files = {'fileToUpload': f}
-        data = {'reqtype': 'fileupload'}
-        response = requests.post(url, data=data, files=files)
+    print("3. Uploading image to temporary host (ImgBB)...")
+    url = "https://api.imgbb.com/1/upload"
+    
+    # ImgBB requires base64 encoding
+    with open(image_path, "rb") as file:
+        payload = {
+            "key": IMGBB_API_KEY,
+            "image": base64.b64encode(file.read())
+        }
         
-    if response.status_code == 200:
-        print("✅ Image uploaded successfully!")
-        return response.text.strip()
+    response = requests.post(url, data=payload)
+    result = response.json()
+    
+    if result.get("success"):
+        print("✅ Image uploaded successfully to ImgBB!")
+        return result["data"]["url"]
     else:
-        print(f"❌ Upload Error {response.status_code}: {response.text}")
+        print(f"❌ Upload Error: {result}")
         return None
 
 def post_to_instagram(image_url, tips):
@@ -151,7 +158,7 @@ def post_to_instagram(image_url, tips):
     creation_id = response['id']
     print(f"✅ Container created! ID: {creation_id}")
     
-    print("5. Waiting for Instagram to process...")
+    print("5. Waiting for Instagram to process (10 seconds)...")
     time.sleep(10) 
     
     print("6. Publishing post...")
