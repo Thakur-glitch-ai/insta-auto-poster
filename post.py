@@ -16,6 +16,7 @@ GEMINI_API_KEY = os.environ.get("GEMINI_KEY")
 
 def get_tips_from_gemini():
     print("1. Asking Gemini for 5 random ATS Resume tips...")
+    # Model ko update karke v1beta use kar rahe hain
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
     
     prompt = "Give me exactly 5 short, actionable ATS resume tips for freshers. Each tip should be a single sentence, maximum 12 words. Do not include numbers, bullet points, or intro/outro text. Separate each tip with a new line."
@@ -31,28 +32,26 @@ def get_tips_from_gemini():
         response = requests.post(url, headers=headers, data=json.dumps(payload))
         result = response.json()
         
-        # Gemini ke response se text nikalna
+        if 'candidates' not in result:
+            print("❌ Gemini API Error:", result)
+            return get_fallback_tips()
+            
         text_response = result['candidates'][0]['content']['parts'][0]['text']
-        
-        # Text ko lines mein split karke khali lines hatana
         tips = [line.strip() for line in text_response.strip().split('\n') if line.strip()]
-        
-        # Sirf pehle 5 tips lena (agar AI ne zyada diye)
         tips = tips[:5]
         
         if len(tips) < 3:
             print("Gemini gave less tips, using fallback.")
             return get_fallback_tips()
             
-        print(f"Gemini Tips: {tips}")
+        print(f"✅ Gemini Tips: {tips}")
         return tips
         
     except Exception as e:
-        print(f"Gemini Error: {e}. Using fallback tips.")
+        print(f"❌ Gemini Exception: {e}. Using fallback tips.")
         return get_fallback_tips()
 
 def get_fallback_tips():
-    # Agar Gemini fail ho jaye toh yeh use honge
     fallback = [
         "Use a clean, simple format that ATS can read easily.",
         "Customize your resume for each job by matching keywords.",
@@ -80,7 +79,6 @@ def fetch_and_create_image():
     img = Image.open(BytesIO(img_response.content)).convert("RGBA")
     img = img.resize((1080, 1080))
 
-    # Dark overlay taaki text saaf dikhe
     overlay = Image.new('RGBA', img.size, (0, 0, 0, 160))
     img = Image.alpha_composite(img, overlay)
     
@@ -99,7 +97,6 @@ def fetch_and_create_image():
     y_offset = 250
     
     for i, tip in enumerate(tips):
-        # Text wrap
         words = tip.split()
         lines = []
         current_line = ""
@@ -119,18 +116,21 @@ def fetch_and_create_image():
 
     image_path = "final_post.jpg"
     img.convert("RGB").save(image_path, quality=90)
-    print("Image created successfully!")
+    print("✅ Image created successfully!")
     return image_path, tips
 
 def upload_image_to_host(image_path):
-    print("3. Uploading image to temporary host...")
-    url = "https://catbox.moe/user/api.php"
-    files = {'fileToUpload': open(image_path, 'rb')}
-    data = {'reqtype': 'fileupload'}
-    response = requests.post(url, data=data, files=files)
+    print("3. Uploading image to temporary host (0x0.st)...")
+    # Catbox ki jagah 0x0.st use kar rahe hain jo zyada reliable hai
+    with open(image_path, 'rb') as f:
+        response = requests.post('https://0x0.st', files={'file': f})
+        
     if response.status_code == 200:
-        return response.text
-    return None
+        print("✅ Image uploaded successfully!")
+        return response.text.strip()
+    else:
+        print(f"❌ Upload Error {response.status_code}: {response.text}")
+        return None
 
 def post_to_instagram(image_url, tips):
     print("4. Creating media container...")
@@ -142,11 +142,11 @@ def post_to_instagram(image_url, tips):
     response = requests.post(create_url, data=payload).json()
     
     if 'id' not in response:
-        print("Error creating container:", response)
+        print("❌ Error creating container:", response)
         return
         
     creation_id = response['id']
-    print(f"Container created! ID: {creation_id}")
+    print(f"✅ Container created! ID: {creation_id}")
     
     print("5. Waiting for Instagram to process...")
     time.sleep(10) 
@@ -168,3 +168,5 @@ if __name__ == "__main__":
         public_image_url = upload_image_to_host(image_path)
         if public_image_url:
             post_to_instagram(public_image_url, chosen_tips)
+        else:
+            print("Script stopped because image upload failed.")
