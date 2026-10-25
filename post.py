@@ -16,8 +16,8 @@ GEMINI_API_KEY = os.environ.get("GEMINI_KEY")
 
 def get_tips_from_gemini():
     print("1. Asking Gemini for 5 random ATS Resume tips...")
-    # Model ko update karke v1beta use kar rahe hain
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
+    # Gemini 2.5 Flash model use kar rahe hain jo abhi available hai
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}"
     
     prompt = "Give me exactly 5 short, actionable ATS resume tips for freshers. Each tip should be a single sentence, maximum 12 words. Do not include numbers, bullet points, or intro/outro text. Separate each tip with a new line."
     
@@ -120,10 +120,13 @@ def fetch_and_create_image():
     return image_path, tips
 
 def upload_image_to_host(image_path):
-    print("3. Uploading image to temporary host (0x0.st)...")
-    # Catbox ki jagah 0x0.st use kar rahe hain jo zyada reliable hai
+    print("3. Uploading image to temporary host (Catbox)...")
+    # 0x0.st band hai, isliye wapas Catbox.moe use kar rahe hain
+    url = "https://catbox.moe/user/api.php"
     with open(image_path, 'rb') as f:
-        response = requests.post('https://0x0.st', files={'file': f})
+        files = {'fileToUpload': f}
+        data = {'reqtype': 'fileupload'}
+        response = requests.post(url, data=data, files=files)
         
     if response.status_code == 200:
         print("✅ Image uploaded successfully!")
