@@ -14,14 +14,14 @@ ACCESS_TOKEN = os.environ.get("IG_TOKEN")
 IG_USER_ID = os.environ.get("IG_USER_ID")
 PIXABAY_API_KEY = os.environ.get("PIXABAY_KEY")
 GEMINI_API_KEY = os.environ.get("GEMINI_KEY")
-IMGBB_API_KEY = os.environ.get("IMGBB_KEY") # New ImgBB Key
+IMGBB_API_KEY = os.environ.get("IMGBB_KEY")
 
 def get_tips_from_gemini():
     print("1. Asking Gemini for 5 random ATS Resume tips...")
-    # Updated to gemini-3.8-flash as requested by the API error
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key={GEMINI_API_KEY}"
     
-    prompt = "Give me exactly 5 short, actionable ATS resume tips for freshers. Each tip should be a single sentence, maximum 12 words. Do not include numbers, bullet points, or intro/outro text. Separate each tip with a new line."
+    # PROMPT UPDATED: Strictly maximum 8 words
+    prompt = "Give me exactly 5 short, actionable ATS resume tips for freshers. Each tip must be a single sentence, strictly maximum 8 words. Do not include numbers, bullet points, or intro/outro text. Separate each tip with a new line."
     
     payload = {
         "contents": [{
@@ -55,11 +55,11 @@ def get_tips_from_gemini():
 
 def get_fallback_tips():
     fallback = [
-        "Use a clean, simple format that ATS can read easily.",
-        "Customize your resume for each job by matching keywords.",
-        "Save your resume as a PDF to preserve formatting.",
-        "Avoid using tables, images, or special characters.",
-        "Quantify your achievements with numbers and percentages."
+        "Use a clean, simple format for ATS.",
+        "Customize your resume for each job.",
+        "Save your resume as a standard PDF.",
+        "Avoid tables, images, or special characters.",
+        "Quantify achievements with numbers and percentages."
     ]
     return random.sample(fallback, 5)
 
@@ -87,23 +87,27 @@ def fetch_and_create_image():
     draw = ImageDraw.Draw(img)
     
     try:
-        font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 45)
-        title_font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 60)
+        # FONT SIZE UPDATED: Reduced from 45 to 40
+        font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 40)
+        title_font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 55)
     except:
         font = ImageFont.load_default()
         title_font = ImageFont.load_default()
 
-    draw.text((50, 100), "TOP 5 ATS RESUME TIPS", font=title_font, fill="white")
+    draw.text((50, 80), "TOP 5 ATS RESUME TIPS", font=title_font, fill="white")
     
     tips = get_tips_from_gemini()
-    y_offset = 250
+    
+    # POSITIONING UPDATED: Starts higher and tighter gaps
+    y_offset = 220
     
     for i, tip in enumerate(tips):
         words = tip.split()
         lines = []
         current_line = ""
         for word in words:
-            if draw.textlength(current_line + " " + word, font=font) < 900:
+            # Increased width limit slightly to 950 so text doesn't wrap too early
+            if draw.textlength(current_line + " " + word, font=font) < 950:
                 current_line += " " + word
             else:
                 lines.append(current_line)
@@ -112,9 +116,9 @@ def fetch_and_create_image():
         
         draw.text((50, y_offset), f"{i+1}. ", font=font, fill="#FFD700")
         for line in lines:
-            draw.text((110, y_offset), line, font=font, fill="white")
-            y_offset += 60
-        y_offset += 20
+            draw.text((100, y_offset), line, font=font, fill="white")
+            y_offset += 50 # Reduced from 60
+        y_offset += 15 # Reduced from 20
 
     image_path = "final_post.jpg"
     img.convert("RGB").save(image_path, quality=90)
@@ -125,7 +129,6 @@ def upload_image_to_host(image_path):
     print("3. Uploading image to temporary host (ImgBB)...")
     url = "https://api.imgbb.com/1/upload"
     
-    # ImgBB requires base64 encoding
     with open(image_path, "rb") as file:
         payload = {
             "key": IMGBB_API_KEY,
