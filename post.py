@@ -1,51 +1,170 @@
 import requests
 import time
 import os
+import random
+import json
+from io import BytesIO
+from PIL import Image, ImageDraw, ImageFont
 
-# GitHub Secrets se token aur ID uthayega
+# ==========================================
+# GITHUB SECRETS SE DETAILS UTHAYEGA
+# ==========================================
 ACCESS_TOKEN = os.environ.get("IG_TOKEN")
 IG_USER_ID = os.environ.get("IG_USER_ID")
+PIXABAY_API_KEY = os.environ.get("PIXABAY_KEY")
+GEMINI_API_KEY = os.environ.get("GEMINI_KEY")
 
-IMAGE_URL = "https://images.unsplash.com/photo-1586281380349-632531db7ed4?q=80&w=1000" 
-CAPTION = "Top 3 ATS Resume Tips for Freshers! 🚀\n\n1. Use standard headings.\n2. Save as PDF.\n3. Avoid tables and graphics.\n\n#ResumeTips #ATS #CareerAdvice #GetShortlisted"
-
-def post_to_instagram():
-    print("1. Creating media container...")
-    create_url = f"https://graph.instagram.com/v20.0/{IG_USER_ID}/media"
+def get_tips_from_gemini():
+    print("1. Asking Gemini for 5 random ATS Resume tips...")
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
+    
+    prompt = "Give me exactly 5 short, actionable ATS resume tips for freshers. Each tip should be a single sentence, maximum 12 words. Do not include numbers, bullet points, or intro/outro text. Separate each tip with a new line."
     
     payload = {
-        'image_url': IMAGE_URL,
-        'caption': CAPTION,
-        'access_token': ACCESS_TOKEN
+        "contents": [{
+            "parts": [{"text": prompt}]
+        }]
     }
+    headers = {'Content-Type': 'application/json'}
     
-    response = requests.post(create_url, data=payload)
-    result = response.json()
+    try:
+        response = requests.post(url, headers=headers, data=json.dumps(payload))
+        result = response.json()
+        
+        # Gemini ke response se text nikalna
+        text_response = result['candidates'][0]['content']['parts'][0]['text']
+        
+        # Text ko lines mein split karke khali lines hatana
+        tips = [line.strip() for line in text_response.strip().split('\n') if line.strip()]
+        
+        # Sirf pehle 5 tips lena (agar AI ne zyada diye)
+        tips = tips[:5]
+        
+        if len(tips) < 3:
+            print("Gemini gave less tips, using fallback.")
+            return get_fallback_tips()
+            
+        print(f"Gemini Tips: {tips}")
+        return tips
+        
+    except Exception as e:
+        print(f"Gemini Error: {e}. Using fallback tips.")
+        return get_fallback_tips()
+
+def get_fallback_tips():
+    # Agar Gemini fail ho jaye toh yeh use honge
+    fallback = [
+        "Use a clean, simple format that ATS can read easily.",
+        "Customize your resume for each job by matching keywords.",
+        "Save your resume as a PDF to preserve formatting.",
+        "Avoid using tables, images, or special characters.",
+        "Quantify your achievements with numbers and percentages."
+    ]
+    return random.sample(fallback, 5)
+
+def fetch_and_create_image():
+    print("2. Fetching random image from Pixabay...")
+    search_query = random.choice(["office desk", "job interview", "laptop workspace", "career", "resume"])
+    pixabay_url = f"https://pixabay.com/api/?key={PIXABAY_API_KEY}&q={search_query}&image_type=photo&orientation=square&per_page=3"
     
-    if 'id' not in result:
-        print("Error creating container:", result)
+    response = requests.get(pixabay_url)
+    data = response.json()
+    
+    if not data.get('hits'):
+        img_url = "https://images.unsplash.com/photo-1586281380349-632531db7ed4?q=80&w=1080&h=1080&fit=crop"
+    else:
+        img_url = random.choice(data['hits'])['largeImageURL']
+    
+    print(f"Downloading image: {img_url}")
+    img_response = requests.get(img_url)
+    img = Image.open(BytesIO(img_response.content)).convert("RGBA")
+    img = img.resize((1080, 1080))
+
+    # Dark overlay taaki text saaf dikhe
+    overlay = Image.new('RGBA', img.size, (0, 0, 0, 160))
+    img = Image.alpha_composite(img, overlay)
+    
+    draw = ImageDraw.Draw(img)
+    
+    try:
+        font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 45)
+        title_font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 60)
+    except:
+        font = ImageFont.load_default()
+        title_font = ImageFont.load_default()
+
+    draw.text((50, 100), "TOP 5 ATS RESUME TIPS", font=title_font, fill="white")
+    
+    tips = get_tips_from_gemini()
+    y_offset = 250
+    
+    for i, tip in enumerate(tips):
+        # Text wrap
+        words = tip.split()
+        lines = []
+        current_line = ""
+        for word in words:
+            if draw.textlength(current_line + " " + word, font=font) < 900:
+                current_line += " " + word
+            else:
+                lines.append(current_line)
+                current_line = word
+        lines.append(current_line)
+        
+        draw.text((50, y_offset), f"{i+1}. ", font=font, fill="#FFD700")
+        for line in lines:
+            draw.text((110, y_offset), line, font=font, fill="white")
+            y_offset += 60
+        y_offset += 20
+
+    image_path = "final_post.jpg"
+    img.convert("RGB").save(image_path, quality=90)
+    print("Image created successfully!")
+    return image_path, tips
+
+def upload_image_to_host(image_path):
+    print("3. Uploading image to temporary host...")
+    url = "https://catbox.moe/user/api.php"
+    files = {'fileToUpload': open(image_path, 'rb')}
+    data = {'reqtype': 'fileupload'}
+    response = requests.post(url, data=data, files=files)
+    if response.status_code == 200:
+        return response.text
+    return None
+
+def post_to_instagram(image_url, tips):
+    print("4. Creating media container...")
+    caption = "Top 5 ATS Resume Tips! 🚀\n\n" + "\n".join([f"👉 {tip}" for tip in tips]) + "\n\n#ResumeTips #ATS #CareerAdvice #GetShortlisted"
+    
+    create_url = f"https://graph.instagram.com/v20.0/{IG_USER_ID}/media"
+    payload = {'image_url': image_url, 'caption': caption, 'access_token': ACCESS_TOKEN}
+    
+    response = requests.post(create_url, data=payload).json()
+    
+    if 'id' not in response:
+        print("Error creating container:", response)
         return
         
-    creation_id = result['id']
+    creation_id = response['id']
     print(f"Container created! ID: {creation_id}")
     
-    print("2. Waiting for Instagram to process...")
+    print("5. Waiting for Instagram to process...")
     time.sleep(10) 
     
-    print("3. Publishing post...")
+    print("6. Publishing post...")
     publish_url = f"https://graph.instagram.com/v20.0/{IG_USER_ID}/media_publish"
-    publish_payload = {
-        'creation_id': creation_id,
-        'access_token': ACCESS_TOKEN
-    }
+    publish_payload = {'creation_id': creation_id, 'access_token': ACCESS_TOKEN}
     
-    publish_response = requests.post(publish_url, data=publish_payload)
-    publish_result = publish_response.json()
+    publish_response = requests.post(publish_url, data=publish_payload).json()
     
-    if 'id' in publish_result:
-        print("Success! Post published.")
+    if 'id' in publish_response:
+        print("🎉 Success! Post published successfully.")
     else:
-        print("Error publishing:", publish_result)
+        print("❌ Error publishing:", publish_response)
 
 if __name__ == "__main__":
-    post_to_instagram()
+    image_path, chosen_tips = fetch_and_create_image()
+    if image_path:
+        public_image_url = upload_image_to_host(image_path)
+        if public_image_url:
+            post_to_instagram(public_image_url, chosen_tips)
